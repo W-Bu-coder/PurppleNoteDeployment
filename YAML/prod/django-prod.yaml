@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-deployment
+  namespace: production
+  labels:
+    app: django
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      containers:
+      - name: django-container
+        image: us-central1-docker.pkg.dev/socialbook-455415/django-repo/django-app:v1
+        ports:
+        - containerPort: 8080
+        env:
+        # - name: SQL_HOST
+        #   value: "104.154.34.195"
+        # - name: SQL_PORT
+        #   value: "5432"
+        # - name: SQL_DATABASE
+        #   value: "social_book_db"
+        # - name: SQL_USER
+        #   value: "xiaolin"
+        # - name: SQL_PASSWORD
+        #   value: "1234"
+        - name: DJANGO_ALLOWED_HOSTS
+          value: "*"
+        - name: DJANGO_DEBUG
+          value: "False" 
+        - name: DJANGO_SECRET_KEY
+          valueFrom:     
+            secretKeyRef:
+              name: secrets
+              key: secret-key
+        - name: DJANGO_ALLOWED_HOSTS
+          value: "*"     # Should be set to real domain, we keep it * because we do not have a domain
+        - name: DJANGO_CSRF_TRUSTED_ORIGINS
+          value: "*"     
+        - name: SQL_DATABASE
+          value: "social_book_db"
+        - name: SQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: secrets
+              key: username
+        - name: SQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: secrets
+              key: password
+        - name: SQL_HOST
+          value: "127.0.0.1"  # Connect to Cloud SQL
+        - name: SQL_PORT
+          value: "5432"
+        volumeMounts:
+        # - name: media-storage
+        #   mountPath: /app/media
+          - name: kube-api-access-ctvvq
+            mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            readOnly: true
+      # Cloud SQL Proxy sidecar container
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.28.0
+        command:
+          - "/cloud_sql_proxy"
+          - "-instances=socialbook-455415:us-central1:socialbook-db=tcp:5432"
+          - "-credential_file=/secrets/credentials.json"
+        securityContext:
+          runAsNonRoot: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+          - name: cloudsql-credentials
+            mountPath: /secrets
+            readOnly: true
+      volumes:
+        - name: kube-api-access-ctvvq
+          projected:
+            defaultMode: 420
+            sources:
+              - serviceAccountToken:
+                  expirationSeconds: 3607
+                  path: token
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        apiVersion: v1
+                        fieldPath: metadata.namespace
+        - name: cloudsql-credentials
+          secret:
+            secretName: secrets
+            items:
+              - key: key
+                path: credentials.json
+      # - name: media-storage
+      #   persistentVolumeClaim:
+      #     claimName: media-pvc 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-service
+  namespace: production
+spec:
+  type: LoadBalancer
+  selector:
+    app: django
+  ports:
+  - port: 80
+    targetPort: 8080

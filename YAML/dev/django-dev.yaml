@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+  namespace: development
+  labels:
+    app: django
+spec:
+  containers:
+  - name: django-container
+    image: us-central1-docker.pkg.dev/socialbook-455415/django-repo/django-app:v1
+    ports:
+    - containerPort: 8080
+    env:
+    - name: DJANGO_DEBUG
+      value: "True"
+    - name: DJANGO_SECRET_KEY
+      value: "django-insecure-default-key"
+    - name: DJANGO_ALLOWED_HOSTS
+      value: "*"
+    - name: DJANGO_CSRF_TRUSTED_ORIGINS
+      value: "*"
+    - name: SQL_DATABASE
+      value: "social_book_db"
+    - name: SQL_USER
+      value: "yushi"
+    - name: SQL_PASSWORD
+      value: "123456"
+    - name: SQL_HOST
+      value: "postgres"
+    - name: SQL_PORT
+      value: "5432"
+    volumeMounts:
+    - name: media-storage
+      mountPath: /app/media
+  volumes:
+  - name: media-storage
+    emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-service
+  namespace: development
+spec:
+  type: LoadBalancer
+  selector:
+    app: django
+  ports:
+  - port: 80
+    targetPort: 8080
